@@ -50,8 +50,8 @@ from CTFd.utils.config import get_themes
 
 class DockerConfig(db.Model):
     """
-	Docker Config Model. This model stores the config for docker API connections.
-	"""
+    Docker Config Model. This model stores the config for docker API connections.
+    """
     id = db.Column(db.Integer, primary_key=True)
     hostname = db.Column("hostname", db.String(64), index=True)
     tls_enabled = db.Column("tls_enabled", db.Boolean, default=False, index=True)
@@ -63,8 +63,8 @@ class DockerConfig(db.Model):
 
 class DockerChallengeTracker(db.Model):
     """
-	Docker Container Tracker. This model stores the users/teams active docker containers.
-	"""
+    Docker Container Tracker. This model stores the users/teams active docker containers.
+    """
     id = db.Column(db.Integer, primary_key=True)
     team_id = db.Column("team_id", db.String(64), index=True)
     user_id = db.Column("user_id", db.String(64), index=True)
@@ -218,9 +218,11 @@ def do_request(docker, url, headers=None, method='GET'):
     try:
         if tls:
             if (method == 'GET'):
-                r = requests.get(url=f"%s{url}" % URL_TEMPLATE, cert=get_client_cert(docker), verify=False, headers=headers)
+                r = requests.get(url=f"%s{url}" % URL_TEMPLATE, cert=get_client_cert(docker), verify=False,
+                                 headers=headers)
             elif (method == 'DELETE'):
-                r = requests.delete(url=f"%s{url}" % URL_TEMPLATE, cert=get_client_cert(docker), verify=False, headers=headers)
+                r = requests.delete(url=f"%s{url}" % URL_TEMPLATE, cert=get_client_cert(docker), verify=False,
+                                    headers=headers)
         else:
             if (method == 'GET'):
                 r = requests.get(url=f"%s{url}" % URL_TEMPLATE, headers=headers)
@@ -238,13 +240,13 @@ def get_client_cert(docker):
         client = docker.client_cert
         ckey = docker.client_key
         ca_file = tempfile.NamedTemporaryFile(delete=False)
-        ca_file.write(ca)
+        ca_file.write(ca.encode())
         ca_file.seek(0)
         client_file = tempfile.NamedTemporaryFile(delete=False)
-        client_file.write(client)
+        client_file.write(client.encode())
         client_file.seek(0)
         key_file = tempfile.NamedTemporaryFile(delete=False)
-        key_file.write(ckey)
+        key_file.write(ckey.encode())
         key_file.seek(0)
         CERT = (client_file.name, key_file.name)
     except:
@@ -258,7 +260,7 @@ def get_repositories(docker, tags=False, repos=False):
     r = do_request(docker, '/images/json?all=1')
     result = list()
     for i in r.json():
-        if not i['RepoTags'] == None:
+        if i['RepoTags']:
             if not i['RepoTags'][0].split(':')[0] == '<none>':
                 if repos:
                     if not i['RepoTags'][0].split(':')[0] in repos:
@@ -276,13 +278,14 @@ def get_unavailable_ports(docker):
     for i in r.json():
         if not i['Ports'] == []:
             for p in i['Ports']:
-                result.append(p['PublicPort'])
+                if 'PublicPort' in p:
+                    result.append(p['PublicPort'])
     return result
 
 
 def get_required_ports(docker, image):
     r = do_request(docker, f'/images/{image}/json?all=1')
-    result = r.json()['ContainerConfig']['ExposedPorts'].keys()
+    result = r.json()['Config']['ExposedPorts'].keys()
     return result
 
 
@@ -298,13 +301,13 @@ def create_container(docker, image, team, portbl):
             client = docker.client_cert
             ckey = docker.client_key
             ca_file = tempfile.NamedTemporaryFile(delete=False)
-            ca_file.write(ca)
+            ca_file.write(ca.encode())
             ca_file.seek(0)
             client_file = tempfile.NamedTemporaryFile(delete=False)
-            client_file.write(client)
+            client_file.write(client.encode())
             client_file.seek(0)
             key_file = tempfile.NamedTemporaryFile(delete=False)
-            key_file.write(ckey)
+            key_file.write(ckey.encode())
             key_file.seek(0)
             CERT = (client_file.name, key_file.name)
         except:
@@ -332,7 +335,7 @@ def create_container(docker, image, team, portbl):
     data = json.dumps({"Image": image, "ExposedPorts": ports, "HostConfig": {"PortBindings": bindings}})
     if tls:
         r = requests.post(url="%s/containers/create?name=%s" % (URL_TEMPLATE, container_name), cert=CERT,
-                      verify=False, data=data, headers=headers)
+                          verify=False, data=data, headers=headers)
         result = r.json()
         s = requests.post(url="%s/containers/%s/start" % (URL_TEMPLATE, result['Id']), cert=CERT, verify=False,
                           headers=headers)
@@ -506,7 +509,7 @@ class DockerChallengeType(BaseChallenge):
         db.session.add(solve)
         db.session.commit()
         # trying if this solces the detached instance error...
-        #db.session.close()
+        # db.session.close()
 
     @staticmethod
     def fail(user, team, challenge, request):
@@ -529,7 +532,7 @@ class DockerChallengeType(BaseChallenge):
         )
         db.session.add(wrong)
         db.session.commit()
-        #db.session.close()
+        # db.session.close()
 
 
 class DockerChallenge(Challenges):
@@ -597,7 +600,7 @@ class ContainerAPI(Resource):
         )
         db.session.add(entry)
         db.session.commit()
-        #db.session.close()
+        # db.session.close()
         return
 
 
@@ -616,6 +619,7 @@ class DockerStatus(Resource):
         docker = DockerConfig.query.filter_by(id=1).first()
         if is_teams_mode():
             session = get_current_team()
+            # TODO: fix this for admin user, who cannot be in a team
             tracker = DockerChallengeTracker.query.filter_by(team_id=session.id)
         else:
             session = get_current_user()
@@ -663,13 +667,13 @@ class DockerAPI(Resource):
             }
         else:
             return {
-                       'success': False,
-                       'data': [
-                           {
-                               'name': 'Error in Docker Config!'
-                           }
-                       ]
-                   }, 400
+                'success': False,
+                'data': [
+                    {
+                        'name': 'Error in Docker Config!'
+                    }
+                ]
+            }, 400
 
 
 def load(app):
